@@ -212,38 +212,96 @@ if __name__ == '__main__':
     print("———————▶owner of dream world is suryansh tyagi◀—————————")
     print("___________________________________________________________\n")
 
+    accounts = {}
+
     if TK_AVAILABLE:
         # GUI flow
-        gui_root = tk.Tk()
-        gui_root.withdraw()  # hide the root while we get inputs
-        messagebox.showinfo("Welcome", "Welcome to Bank of Dream World")
-        name = simpledialog.askstring("Account Creation", "Enter your name:")
-        if not name:
-            messagebox.showerror("Error", "Name is required. Exiting.")
-            sys.exit()
-        account_number = simpledialog.askstring("Account Creation", "Enter your account number:")
-        if not account_number:
-            messagebox.showerror("Error", "Account number is required. Exiting.")
-            sys.exit()
-        messagebox.showinfo("Success", "Congratulations! Account created successfully......")
-        gui_root.destroy()
+        login_root = tk.Tk()
+        login_root.title("Bank of Dream World - Login")
+        login_root.geometry("300x200")
+        login_root.configure(bg="#eef6ff")
 
-        atm = ATM(name, account_number)
-        open_transaction_window(atm)
+        def do_register():
+            name = simpledialog.askstring("Account Creation", "Enter your name:", parent=login_root)
+            if not name: return
+            account_number = simpledialog.askstring("Account Creation", "Enter your account number:", parent=login_root)
+            if not account_number: return
+            if account_number in accounts:
+                messagebox.showerror("Error", "Account already exists!", parent=login_root)
+                return
+            pin = simpledialog.askstring("Account Creation", "Set your PIN:", show="*", parent=login_root)
+            if not pin: return
+            
+            accounts[account_number] = {"name": name, "pin": pin, "atm": ATM(name, account_number)}
+            messagebox.showinfo("Success", "Account created successfully. You can now log in.", parent=login_root)
+
+        def do_login():
+            account_number = simpledialog.askstring("Login", "Enter your account number:", parent=login_root)
+            if not account_number: return
+            if account_number not in accounts:
+                messagebox.showerror("Error", "Account not found!", parent=login_root)
+                return
+            pin = simpledialog.askstring("Login", "Enter your PIN:", show="*", parent=login_root)
+            if pin != accounts[account_number]["pin"]:
+                messagebox.showerror("Error", "Incorrect PIN!", parent=login_root)
+                return
+            
+            # Login successful
+            messagebox.showinfo("Success", "Login successful!", parent=login_root)
+            atm = accounts[account_number]["atm"]
+            login_root.destroy()
+            open_transaction_window(atm)
+
+        tk.Label(login_root, text="Bank of Dream World", font=('Helvetica', 14, 'bold'), bg="#eef6ff").pack(pady=20)
+        tk.Button(login_root, text="Create Account", command=do_register, width=15).pack(pady=5)
+        tk.Button(login_root, text="Log In", command=do_login, width=15).pack(pady=5)
+        tk.Button(login_root, text="Exit", command=login_root.destroy, width=15).pack(pady=5)
+
+        login_root.mainloop()
+
     else:
         # Console fallback
-        print("----------ACCOUNT CREATION----------")
-        name = input("Enter your name: ")
-        account_number = input("Enter your account number: ")
-        print("Congratulations! Account created successfully......\n")
-
-        atm = ATM(name, account_number)
-
         while True:
-            trans = input("Do you want to do any transaction?(yes/no):")
-            if trans == "yes":
-                atm.transaction()
-            elif trans == "no":
+            print("\n1. Create Account")
+            print("2. Log In")
+            print("3. Exit")
+            choice = input("Choose an option: ")
+
+            if choice == '1':
+                print("----------ACCOUNT CREATION----------")
+                name = input("Enter your name: ")
+                account_number = input("Enter your account number: ")
+                if account_number in accounts:
+                    print("Account already exists!\n")
+                    continue
+                pin = input("Set your PIN: ")
+                accounts[account_number] = {"name": name, "pin": pin, "atm": ATM(name, account_number)}
+                print("Congratulations! Account created successfully......\n")
+
+            elif choice == '2':
+                print("----------LOG IN----------")
+                account_number = input("Enter your account number: ")
+                if account_number not in accounts:
+                    print("Account not found!\n")
+                    continue
+                pin = input("Enter your PIN: ")
+                if accounts[account_number]["pin"] != pin:
+                    print("Incorrect PIN!\n")
+                    continue
+                
+                print("Login successful!\n")
+                atm = accounts[account_number]["atm"]
+                while True:
+                    trans = input("Do you want to do any transaction?(yes/no):")
+                    if trans.lower() == "yes":
+                        atm.transaction()
+                    elif trans.lower() == "no":
+                        print("Logging out...")
+                        break
+                    else:
+                        print("Wrong command!  Enter 'yes' for yes and 'no' for NO.\n")
+            
+            elif choice == '3':
                 print("""
     -------------------------------------
    | Thanks for choosing us as your bank |
@@ -252,4 +310,4 @@ if __name__ == '__main__':
         """)
                 break
             else:
-                print("Wrong command!  Enter 'yes' for yes and 'no' for NO.\n")
+                print("Invalid choice, please try again.\n")
