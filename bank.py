@@ -1,6 +1,11 @@
 32154454
 import random
 import sys
+import json
+import csv
+import os
+from datetime import datetime
+
 try:
     import tkinter as tk
     from tkinter import messagebox, simpledialog, ttk, font
@@ -9,13 +14,36 @@ except Exception:
     TK_AVAILABLE = False
     # tkinter not available; will fall back to console mode
 
+USERS_FILE = "users.json"
+accounts = {}
+current_theme = "Light"
+
+def load_users():
+    if os.path.exists(USERS_FILE):
+        with open(USERS_FILE, 'r') as f:
+            return json.load(f)
+    return {}
+
+def save_users(users_dict):
+    with open(USERS_FILE, 'w') as f:
+        json.dump(users_dict, f, indent=4)
+
+def update_account_state(atm_obj):
+    accounts[atm_obj.account_number] = {
+        "name": atm_obj.name,
+        "pin": atm_obj.pin,
+        "balance": atm_obj.balance,
+        "history": atm_obj.history
+    }
+    save_users(accounts)
 
 class ATM():
-    def __init__(self, name, account_number, balance = 0):
+    def __init__(self, name, account_number, balance = 0, pin = "", history = None):
         self.name = name
         self.account_number = account_number
         self.balance = balance
-        self.history = []
+        self.pin = pin
+        self.history = history if history is not None else []
          
     def account_detail(self):
         print("\n----------ACCOUNT DETAIL----------")
@@ -27,7 +55,9 @@ class ATM():
         self.amount = amount
         self.balance = self.balance + self.amount
         # record transaction
-        self.history.append(("Deposit", amount, self.balance))
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.history.append((now, "Deposit", amount, self.balance))
+        update_account_state(self)
         print("Current account balance: Ruppes.", self.balance)
         print()
  
@@ -41,7 +71,9 @@ class ATM():
         else:
             self.balance = self.balance - self.amount
             # record transaction
-            self.history.append(("Withdraw", amount, self.balance))
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            self.history.append((now, "Withdraw", amount, self.balance))
+            update_account_state(self)
             print(f"Nu.{amount} withdrawal successful!")
             print("Current account balance: Ruppes.", self.balance)
             print()
@@ -59,15 +91,16 @@ class ATM():
             2. Check Balance
             3. Deposit
             4. Withdraw
-            5. Exit
+            5. Export Statement
+            6. Exit
         *********************
         """)
         
         while True:
             try:
-                option = int(input("Enter 1, 2, 3, 4 or 5:"))
+                option = int(input("Enter 1, 2, 3, 4, 5 or 6:"))
             except:
-                print("Error: Enter 1, 2, 3, 4, or 5 only!\n")
+                print("Error: Enter 1, 2, 3, 4, 5 or 6 only!\n")
                 continue
             else:
                 if option == 1:
@@ -81,6 +114,23 @@ class ATM():
                     amount = int(input("How much you want to withdraw(Ruppes.):"))
                     self.withdraw(amount)
                 elif option == 5:
+                    filename = f"Statement_{self.account_number}.csv"
+                    try:
+                        with open(filename, 'w', newline='') as f:
+                            writer = csv.writer(f)
+                            writer.writerow(["Date", "Time", "Transaction Type", "Amount", "Balance"])
+                            for h in self.history:
+                                if len(h) == 4:
+                                    dt, typ, amt, bal = h
+                                    date_part, time_part = dt.split(' ', 1)
+                                    writer.writerow([date_part, time_part, typ, amt, bal])
+                                else:
+                                    typ, amt, bal = h
+                                    writer.writerow(["", "", typ, amt, bal])
+                        print(f"Statement exported successfully to {filename}\n")
+                    except Exception as e:
+                        print(f"Could not export statement: {e}\n")
+                elif option == 6:
                     print(f"""
                 printing receipt..............
           ******************************************
@@ -134,11 +184,15 @@ def open_transaction_window(atm_obj):
     btn_deposit.grid(row=2, column=0, pady=6)
     btn_withdraw = ttk.Button(controls, text="➖ Withdraw", width=22)
     btn_withdraw.grid(row=3, column=0, pady=6)
+    btn_export = ttk.Button(controls, text="📁 Export Statement", width=22)
+    btn_export.grid(row=4, column=0, pady=6)
+    btn_theme = ttk.Button(controls, text="🌗 Toggle Theme", width=22)
+    btn_theme.grid(row=5, column=0, pady=6)
     # Colored action buttons: separate Print Receipt and Exit
     btn_receipt = tk.Button(controls, text="🧾 Print Receipt", width=22, bg="#28a745", fg="white", activebackground="#1e7e34", relief='raised')
-    btn_receipt.grid(row=4, column=0, pady=6)
+    btn_receipt.grid(row=6, column=0, pady=6)
     btn_exit = tk.Button(controls, text="⛔ Exit", width=22, bg="#dc3545", fg="white", activebackground="#b02a37", relief='raised')
-    btn_exit.grid(row=5, column=0, pady=8)
+    btn_exit.grid(row=7, column=0, pady=8)
 
     # Right: transaction history
     history_frame = ttk.Frame(main)
@@ -156,9 +210,14 @@ def open_transaction_window(atm_obj):
     def refresh_history():
         history_list.delete(0, tk.END)
         for t in atm_obj.history[-50:]:
-            typ, amt, bal = t
-            sign = '+' if typ.lower().startswith('d') else '-'
-            history_list.insert(tk.END, f"{typ}: {sign}Ruppes.{amt}   Bal: Ruppes.{bal}")
+            if len(t) == 4:
+                dt, typ, amt, bal = t
+                sign = '+' if typ.lower().startswith('d') else '-'
+                history_list.insert(tk.END, f"[{dt}] {typ}: {sign}Ruppes.{amt} Bal:{bal}")
+            else:
+                typ, amt, bal = t
+                sign = '+' if typ.lower().startswith('d') else '-'
+                history_list.insert(tk.END, f"{typ}: {sign}Ruppes.{amt}   Bal: Ruppes.{bal}")
         status.config(text=f"Balance: Ruppes. {atm_obj.balance}")
 
     def show_account_detail():
@@ -195,15 +254,67 @@ def open_transaction_window(atm_obj):
         if messagebox.askyesno("Exit", "Are you sure you want to exit?"):
             root.destroy()
 
+    def do_export_statement():
+        filename = f"Statement_{atm_obj.account_number}.csv"
+        try:
+            with open(filename, 'w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(["Date", "Time", "Transaction Type", "Amount", "Balance"])
+                for h in atm_obj.history:
+                    if len(h) == 4:
+                        dt, typ, amt, bal = h
+                        date_part, time_part = dt.split(' ', 1)
+                        writer.writerow([date_part, time_part, typ, amt, bal])
+                    else:
+                        typ, amt, bal = h
+                        writer.writerow(["", "", typ, amt, bal])
+            messagebox.showinfo("Export", f"Statement exported successfully to {filename}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not export statement:\n{e}")
+
+    def apply_theme():
+        bg_color = "#2d2d2d" if current_theme == "Dark" else "#eef6ff"
+        fg_color = "#ffffff" if current_theme == "Dark" else "#000000"
+        list_bg = "#1e1e1e" if current_theme == "Dark" else "#fffaf0"
+        btn_bg = "#404040" if current_theme == "Dark" else "#e0e0e0"
+        btn_fg = "#ffffff" if current_theme == "Dark" else "#000000"
+        
+        root.configure(bg=bg_color)
+        
+        style = ttk.Style(root)
+        style.configure('TFrame', background=bg_color)
+        style.configure('TLabel', background=bg_color, foreground=fg_color)
+        style.configure('Header.TLabel', background=bg_color, foreground=fg_color)
+        style.configure('Sub.TLabel', background=bg_color, foreground=fg_color)
+        style.configure('TButton', background=btn_bg, foreground=btn_fg)
+        
+        def update_tk_widgets(w):
+            if isinstance(w, tk.Listbox):
+                w.configure(bg=list_bg, fg=fg_color)
+            elif isinstance(w, tk.Label):
+                w.configure(bg=bg_color, fg=fg_color)
+            for child in w.winfo_children():
+                update_tk_widgets(child)
+                
+        update_tk_widgets(root)
+
+    def do_toggle_theme():
+        global current_theme
+        current_theme = "Dark" if current_theme == "Light" else "Light"
+        apply_theme()
+
     # wire buttons
     btn_detail.config(command=show_account_detail)
     btn_balance.config(command=do_check_balance)
     btn_deposit.config(command=do_deposit)
     btn_withdraw.config(command=do_withdraw)
+    btn_export.config(command=do_export_statement)
+    btn_theme.config(command=do_toggle_theme)
     btn_receipt.config(command=do_print_receipt)
     btn_exit.config(command=do_exit_confirm)
 
     refresh_history()
+    apply_theme()
     root.mainloop()
 
 
@@ -212,7 +323,7 @@ if __name__ == '__main__':
     print("———————▶owner of dream world is suryansh tyagi◀—————————")
     print("___________________________________________________________\n")
 
-    accounts = {}
+    accounts = load_users()
 
     if TK_AVAILABLE:
         # GUI flow
@@ -232,7 +343,8 @@ if __name__ == '__main__':
             pin = simpledialog.askstring("Account Creation", "Set your PIN:", show="*", parent=login_root)
             if not pin: return
             
-            accounts[account_number] = {"name": name, "pin": pin, "atm": ATM(name, account_number)}
+            accounts[account_number] = {"name": name, "pin": pin, "balance": 0, "history": []}
+            save_users(accounts)
             messagebox.showinfo("Success", "Account created successfully. You can now log in.", parent=login_root)
 
         def do_login():
@@ -248,7 +360,8 @@ if __name__ == '__main__':
             
             # Login successful
             messagebox.showinfo("Success", "Login successful!", parent=login_root)
-            atm = accounts[account_number]["atm"]
+            user_data = accounts[account_number]
+            atm = ATM(user_data["name"], account_number, user_data.get("balance", 0), user_data["pin"], user_data.get("history", []))
             login_root.destroy()
             open_transaction_window(atm)
 
@@ -275,7 +388,8 @@ if __name__ == '__main__':
                     print("Account already exists!\n")
                     continue
                 pin = input("Set your PIN: ")
-                accounts[account_number] = {"name": name, "pin": pin, "atm": ATM(name, account_number)}
+                accounts[account_number] = {"name": name, "pin": pin, "balance": 0, "history": []}
+                save_users(accounts)
                 print("Congratulations! Account created successfully......\n")
 
             elif choice == '2':
@@ -290,7 +404,8 @@ if __name__ == '__main__':
                     continue
                 
                 print("Login successful!\n")
-                atm = accounts[account_number]["atm"]
+                user_data = accounts[account_number]
+                atm = ATM(user_data["name"], account_number, user_data.get("balance", 0), user_data["pin"], user_data.get("history", []))
                 while True:
                     trans = input("Do you want to do any transaction?(yes/no):")
                     if trans.lower() == "yes":
